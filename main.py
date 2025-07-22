@@ -9,7 +9,7 @@ today_str = datetime.now().strftime("%m-%d-%Y")
 def annualize_funding_rate(rate):
     return float(rate) * 24 * 365
 
-# For finding historical funding rates
+# For finding historical funding rates (output may be long so do python3 main.py > output.txt)
 if __name__ == "__main__":
     rates = get_funding_rates("ETH", "08-01-2024", today_str)
     for entry in rates:
