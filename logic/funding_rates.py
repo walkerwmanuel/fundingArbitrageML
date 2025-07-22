@@ -1,4 +1,4 @@
-from services.funding_rates import get_funding_rates_max_19
+from services.hyperliquid.funding_rates import get_funding_rates_max_19
 from datetime import datetime, timedelta
 
 def average_funding_rate(coin: str, start_date: str, end_date: str) -> float:

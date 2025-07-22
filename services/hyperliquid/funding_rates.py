@@ -37,7 +37,6 @@ def get_live_asset_context(coin: str):
             return asset_contexts[i]
 
     return None  # Not found
-    
 
 def to_ms(dt_str):
         # parse as midnight UTC of that date
