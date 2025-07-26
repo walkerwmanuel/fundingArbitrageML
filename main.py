@@ -1,7 +1,9 @@
+import asyncio
+
 from datetime import datetime, timezone
 from services.hyperliquid.funding_rates import get_live_asset_context
 from logic.funding_rates import average_funding_rate, get_funding_rates
-from logic.ml_data import get_all_ml_data
+from logic.ml_data import get_all_historic_ml_data, live_data_gathering_1h
 
 
 # Format today's date as MM-DD-YYYY
@@ -9,6 +11,12 @@ today_str = datetime.now().strftime("%m-%d-%Y")
 
 def annualize_funding_rate(rate):
     return float(rate) * 24 * 365
+
+if __name__ == "__main__": 
+    target_coin = "ETH"
+    get_all_historic_ml_data(target_coin, "01-01-2025", today_str)
+    asyncio.run(live_data_gathering_1h(target_coin))
+
 
 # For finding historical funding rates (output may be long so do python3 main.py > output.txt)
 # if __name__ == "__main__":
@@ -21,7 +29,7 @@ def annualize_funding_rate(rate):
 
 # For finding average funding rates
 # if __name__ == "__main__":
-#     avg_data = average_funding_rate("FARTCOIN", "07-01-2025", today_str)
+#     avg_data = average_funding_rate("FARTCOIN", "02-01-2025", today_str)
 #     avg = avg_data["averageFundingRate"]
 #     annualized = avg_data["annualizedAverageFundingRate"]
 #     print(f"Average funding rate for coin: {avg:.8f}")
@@ -29,15 +37,19 @@ def annualize_funding_rate(rate):
 
 # For live funding rates
 # if __name__ == "__main__":
-#     live_information = get_live_asset_context("VINE")
+#     live_information = get_live_asset_context("HYPE")
 #     print(live_information)
 #     funding_rate = float(live_information['funding'])
 
 #     print("Current funding rate:", funding_rate)
 #     print(f"Current annual funding rate: {annualize_funding_rate(funding_rate):.4%}")
 
-# For machine learning training data
-if __name__ == "__main__": 
-    ml_data = get_all_ml_data("ETH", "07-01-2024", today_str)
-    for row in ml_data:
-        print(row)
+# For historic machine learning training data
+# if __name__ == "__main__": 
+#     ml_data = get_all_historic_ml_data("ETH", "07-01-2024", today_str)
+#     for row in ml_data:
+#         print(row)
+
+# To append live data for the funding rate model
+# if __name__ == "__main__":
+#     asyncio.run(live_data_gathering_1h("BTC"))
