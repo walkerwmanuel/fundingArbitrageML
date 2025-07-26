@@ -1,132 +1,121 @@
 import csv
 import os
-from datetime import datetime
-from services.hyperliquid.funding_rates import get_funding_rates_max_19, get_live_asset_context
-from services.hyperliquid.candles import get_candle_snapshot, candle_websocket
-from logic.funding_rates import get_funding_rates
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+import subprocess
+import pandas as pd
+
+from services.hyperliquid.funding_rates import get_live_asset_context
 
 os.makedirs("historic_data", exist_ok=True)
 
+def append_historic_asset_ctxs(coin, start_date, end_date):
+    bucket = "hyperliquid-archive"
+    s3_prefix = "asset_ctxs"
 
-def find_nearest_candle(funding_time, candles, tolerance=5000):  # ±5 seconds
-    best_candle = None
-    min_diff = float('inf')
-    for candle in candles:
-        close_time = int(candle["T"])
-        diff = abs(close_time - funding_time)
-        if diff <= tolerance and diff < min_diff:
-            min_diff = diff
-            best_candle = candle
-    return best_candle
+    output_csv = os.path.join("historic_data", f"{coin}_funding_data.csv")
+    dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d")
+    all_rows = []
 
-def get_all_historic_ml_data(coin: str, start_date: str, end_date: str):
-    print(f"Fetching historic ml data for {coin}!")
-    funding_records = get_funding_rates(coin, start_date, end_date)
-    if not funding_records:
-        print("Error getting records")
-    dt_start = datetime.strptime(start_date, "%m-%d-%Y")
-    dt_end = datetime.strptime(end_date, "%m-%d-%Y")
-    start_ms = int(dt_start.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
-    end_ms = int(dt_end.replace(hour=23, minute=59, second=59, microsecond=999999).timestamp() * 1000)
-    candles = get_candle_snapshot(coin, "1h", start_ms, end_ms)
-    if not funding_records:
-        print("Error getting candles")
+    while dt <= end:
+        dstr = dt.strftime("%Y%m%d")
+        s3_path = f"s3://{bucket}/{s3_prefix}/{dstr}.csv.lz4"
+        local_lz4 = f"./{dstr}.csv.lz4"
+        local_csv = f"./{dstr}.csv"
 
-    csv_file = os.path.join("historic_data", f"{coin}_funding_data.csv")
-    headers = [
-        "closing_time_of_funding_and_candle",
-        "hourly_funding_rate",
-        "annualized_funding_rate",
-        "premium",
-        "openPrice",
-        "closingPrice",
-        "volume",
-        "open_interest",
-    ]
-
-    with open(csv_file, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=headers)
-        if f.tell() == 0:
-            writer.writeheader()
-
-        for rec in funding_records:
-            funding_time = int(rec["time"])
-            hourly_funding = float(rec["fundingRate"])
-            annualized_funding = hourly_funding * 24 * 365
-            premium = float(rec["premium"])
-
-            # Find the candle whose closing time is within ±5 seconds of funding time
-            candle = find_nearest_candle(funding_time, candles, tolerance=5000)
-            if candle:
-                closingPrice = float(candle["c"])
-                openPrice = float(candle["o"])
-                volume = float(candle["v"])
-            else:
-                closingPrice = None
-                openPrice = None
-                volume = None
-
-            row = {
-                "closing_time_of_funding_and_candle": funding_time,
-                "hourly_funding_rate": hourly_funding,
-                "annualized_funding_rate": annualized_funding,
-                "premium": premium,
-                "openPrice": openPrice,
-                "closingPrice": closingPrice,
-                "volume": volume,
-                "open_interest": "",
-            }
-            writer.writerow(row)
-
-async def live_data_gathering_1h(coin: str):
-    last_close_time = None
-    async for candles in candle_websocket(coin, "1h"):
-        print(f"Received candle data for {coin}: {candles}")
-        close_time = int(candles["T"])
-        if last_close_time is None:
-            last_close_time = close_time  # Initialize and skip first received candle
+        print(f"Downloading {s3_path} ...")
+        code = subprocess.call([
+            "aws", "s3", "cp", s3_path, local_lz4, "--request-payer", "requester"
+        ])
+        if code != 0:
+            print(f"Failed to download {s3_path}, skipping.")
+            dt += timedelta(days=1)
             continue
-        if close_time != last_close_time:
-            append_live_funding_row(coin, candles, close_time)
-            last_close_time = close_time
 
-def append_live_funding_row(coin: str, candle: dict, funding_time: int):
-    print("Runnign append live funding row function")
+        print(f"Decompressing {local_lz4} ...")
+        code = subprocess.call(["unlz4", "-f", local_lz4, local_csv])
+        if code != 0:
+            print(f"Failed to decompress {local_lz4}, skipping.")
+            os.remove(local_lz4)
+            dt += timedelta(days=1)
+            continue
+
+        print(f"Reading {local_csv} ...")
+        try:
+            df = pd.read_csv(local_csv)
+            df = df[df['coin'] == coin]
+
+            # Keep only timestamps that are on the hour
+            df['time'] = pd.to_datetime(df['time'], errors='coerce')
+            df = df[df['time'].dt.minute == 0]
+            df = df[df['time'].dt.second == 0]
+
+            all_rows.append(df)
+        except Exception as e:
+            print(f"Failed to load or filter {local_csv}: {e}")
+
+        try:
+            os.remove(local_lz4)
+            os.remove(local_csv)
+        except Exception:
+            pass
+
+        dt += timedelta(days=1)
+
+    if all_rows:
+        out_df = pd.concat(all_rows, ignore_index=True)
+        file_exists = os.path.isfile(output_csv)
+        if file_exists:
+            old_df = pd.read_csv(output_csv)
+            out_df = pd.concat([old_df, out_df], ignore_index=True, sort=False)
+        out_df.to_csv(output_csv, index=False)
+        print(f"Saved/updated {output_csv} with merged asset ctx data.")
+    else:
+        print("No data files were successfully loaded for your coin and date range.")
+
+
+def append_live_funding_row(coin: str):
+    print("Running append_live_funding_row function")
     live_ctx = get_live_asset_context(coin)
     if not live_ctx:
         print(f"Could not fetch asset context for {coin}")
         return
 
-    # Gather features (use the same structure as get_all_historic_ml_data)
-    hourly_funding = float(live_ctx.get("funding", 0))
-    annualized_funding = hourly_funding * 24 * 365
-    premium = float(live_ctx.get("premium", 0))
-    openPrice = float(candle.get("o", 0))
-    closingPrice = float(candle.get("c", 0))
-    volume = float(candle.get("v", 0))
-    open_interest = float(live_ctx.get("openInterest", 0))
-
-    # Format for CSV (match headers to your ML model requirements)
+    # Prepare the row, matching the historical data format
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     row = {
-        "closing_time_of_funding_and_candle": funding_time,
-        "hourly_funding_rate": hourly_funding,
-        "annualized_funding_rate": annualized_funding,
-        "premium": premium,
-        "openPrice": openPrice,
-        "closingPrice": closingPrice,
-        "volume": volume,
-        "open_interest": open_interest,
+        "time": now,
+        "coin": coin,
+        "funding": live_ctx.get("funding", ""),
+        "open_interest": live_ctx.get("openInterest", ""),
+        "prev_day_px": live_ctx.get("prevDayPx", ""),
+        "day_ntl_vlm": live_ctx.get("dayNtlVlm", ""),
+        "premium": live_ctx.get("premium", ""),
+        "oracle_px": live_ctx.get("oraclePx", ""),
+        "mark_px": live_ctx.get("markPx", ""),
+        "mid_px": live_ctx.get("midPx", ""),
+        "impact_bid_px": "",
+        "impact_ask_px": "",
     }
+    # Parse impactPxs as bid/ask if present
+    impact_pxs = live_ctx.get("impactPxs", [])
+    if isinstance(impact_pxs, list):
+        if len(impact_pxs) > 0:
+            row["impact_bid_px"] = impact_pxs[0]
+        if len(impact_pxs) > 1:
+            row["impact_ask_px"] = impact_pxs[1]
 
     csv_file = os.path.join("historic_data", f"{coin}_funding_data.csv")
-    headers = list(row.keys())
+    headers = [
+        "time", "coin", "funding", "open_interest", "prev_day_px", "day_ntl_vlm",
+        "premium", "oracle_px", "mark_px", "mid_px", "impact_bid_px", "impact_ask_px"
+    ]
 
-    # Append to CSV, add header if file is empty
+    file_exists = os.path.isfile(csv_file)
     try:
         with open(csv_file, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=headers)
-            if f.tell() == 0:
+            if not file_exists or os.stat(csv_file).st_size == 0:
                 writer.writeheader()
             writer.writerow(row)
     except Exception as e:

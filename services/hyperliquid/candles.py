@@ -6,10 +6,10 @@ import json
 import websockets
 
 load_dotenv()  # Load variables from .env file
-HYPERLIQUID_API_URL = os.getenv("HYPERLIQUID_API_URL")
+hyperliquid_api_url = "https://api.hyperliquid.xyz"
 
 def get_candle_snapshot(coin: str, interval: str, start_time_ms: int, end_time_ms: int):
-    hl_url = f"{HYPERLIQUID_API_URL}/info"
+    hl_url = f"{hyperliquid_api_url}/info"
     headers = {"Content-Type": "application/json"}
     payload = {
         "type": "candleSnapshot",

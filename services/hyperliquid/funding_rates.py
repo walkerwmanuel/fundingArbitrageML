@@ -4,8 +4,8 @@ import os
 from datetime import datetime, timezone
 
 load_dotenv()
-HYPERLIQUID_API_URL = os.getenv("HYPERLIQUID_API_URL")
-hl_url = f"{HYPERLIQUID_API_URL}/info"
+hyperliquid_api_url = "https://api.hyperliquid.xyz"
+hl_url = f"{hyperliquid_api_url}/info"
 
 
 def get_funding_rates_max_19(coin: str, start_date: str, end_date: str):

@@ -1,9 +1,9 @@
 import asyncio
-
+import time
 from datetime import datetime, timezone
 from services.hyperliquid.funding_rates import get_live_asset_context
 from logic.funding_rates import average_funding_rate, get_funding_rates
-from logic.ml_data import get_all_historic_ml_data, live_data_gathering_1h
+from logic.ml_data import append_live_funding_row, append_historic_asset_ctxs
 
 
 # Format today's date as MM-DD-YYYY
@@ -13,43 +13,19 @@ def annualize_funding_rate(rate):
     return float(rate) * 24 * 365
 
 if __name__ == "__main__": 
-    target_coin = "BTC"
-    get_all_historic_ml_data(target_coin, "01-01-2025", today_str)
-    asyncio.run(live_data_gathering_1h(target_coin))
+#     # target_coin = "BTC"
+    append_historic_asset_ctxs("ETH", "2023-10-25", "2025-06-25")
+#     append_live_funding_row("BTC")
 
-
-# For finding historical funding rates (output may be long so do python3 main.py > output.txt)
 # if __name__ == "__main__":
-#     rates = get_funding_rates("ETH", "07-01-2025", today_str)
-#     for entry in rates:
-#         ts = datetime.fromtimestamp(entry["time"]/1000, tz=timezone.utc)
-#         rate = float(entry['fundingRate'])
-#         rate_annualized = annualize_funding_rate(rate)
-#         print(f"{ts.isoformat()} → rate: {rate:.8f}, annualized: {rate_annualized:.4%}, premium: {entry['premium']}, coin: {entry['coin']}")
-
-# For finding average funding rates
-# if __name__ == "__main__":
-#     avg_data = average_funding_rate("FARTCOIN", "02-01-2025", today_str)
-#     avg = avg_data["averageFundingRate"]
-#     annualized = avg_data["annualizedAverageFundingRate"]
-#     print(f"Average funding rate for coin: {avg:.8f}")
-#     print(f"Annualized average funding rate: {annualized:.4%}")
-
-# For live funding rates
-# if __name__ == "__main__":
-#     live_information = get_live_asset_context("HYPE")
-#     print(live_information)
-#     funding_rate = float(live_information['funding'])
-
-#     print("Current funding rate:", funding_rate)
-#     print(f"Current annual funding rate: {annualize_funding_rate(funding_rate):.4%}")
-
-# For historic machine learning training data
-# if __name__ == "__main__": 
-#     ml_data = get_all_historic_ml_data("ETH", "07-01-2024", today_str)
-#     for row in ml_data:
-#         print(row)
-
-# To append live data for the funding rate model
-# if __name__ == "__main__":
-#     asyncio.run(live_data_gathering_1h("BTC"))
+#     target_coin = "BTC"
+#     last_minute = None
+#     while True:
+#         now = datetime.now(timezone.utc)
+#         current_minute = now.replace(second=0, microsecond=0)
+#         if last_minute != current_minute:
+#             append_live_funding_row(target_coin)
+#             print(f"Appended row for {target_coin} at {now.isoformat()}")
+#             last_minute = current_minute
+#         # Always sleep a little (not 60s, just a bit) to avoid CPU spinning
+#         time.sleep(0.5)
