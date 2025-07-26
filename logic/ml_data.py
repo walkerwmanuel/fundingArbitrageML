@@ -41,7 +41,8 @@ def get_all_historic_ml_data(coin: str, start_date: str, end_date: str):
         "premium",
         "openPrice",
         "closingPrice",
-        "volume"
+        "volume",
+        "open_interest",
     ]
 
     with open(csv_file, "a", newline="") as f:
@@ -73,7 +74,8 @@ def get_all_historic_ml_data(coin: str, start_date: str, end_date: str):
                 "premium": premium,
                 "openPrice": openPrice,
                 "closingPrice": closingPrice,
-                "volume": volume
+                "volume": volume,
+                "open_interest": "",
             }
             writer.writerow(row)
 
@@ -103,6 +105,7 @@ def append_live_funding_row(coin: str, candle: dict, funding_time: int):
     openPrice = float(candle.get("o", 0))
     closingPrice = float(candle.get("c", 0))
     volume = float(candle.get("v", 0))
+    open_interest = float(live_ctx.get("openInterest", 0))
 
     # Format for CSV (match headers to your ML model requirements)
     row = {
@@ -113,6 +116,7 @@ def append_live_funding_row(coin: str, candle: dict, funding_time: int):
         "openPrice": openPrice,
         "closingPrice": closingPrice,
         "volume": volume,
+        "open_interest": open_interest,
     }
 
     csv_file = os.path.join("historic_data", f"{coin}_funding_data.csv")

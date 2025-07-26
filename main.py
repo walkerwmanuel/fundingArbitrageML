@@ -13,7 +13,7 @@ def annualize_funding_rate(rate):
     return float(rate) * 24 * 365
 
 if __name__ == "__main__": 
-    target_coin = "ETH"
+    target_coin = "BTC"
     get_all_historic_ml_data(target_coin, "01-01-2025", today_str)
     asyncio.run(live_data_gathering_1h(target_coin))
 
